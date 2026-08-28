@@ -1,0 +1,7 @@
+{
+  "apiEndpoint": "https://t5q6ogypd4.execute-api.us-east-1.amazonaws.com",
+  "tableName": "onpaper-data",
+  "userPoolId": "us-east-1_CwBwcSMGz",
+  "userPoolClientId": "",
+  "region": "us-east-1"
+}

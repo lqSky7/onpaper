@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+*.zip
+
+# Environment & credentials
+.env
+.env.local
+.env.*.local
+credentials.json
+
+# Local runtime directories
+.interview-prep/
+.onpaper/
+
+# Logs & diagnostics
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
