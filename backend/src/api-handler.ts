@@ -162,6 +162,9 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
       const mistakes = await DynamoDBStore.getMistakes(userId);
       const dueCards = await DynamoDBStore.getDueCards(userId);
 
+      const todayPrefix = new Date().toISOString().split("T")[0];
+      const hasSessionToday = sessions.some((s) => s.startedAt && s.startedAt.startsWith(todayPrefix));
+
       return {
         statusCode: 200,
         headers,
@@ -170,8 +173,8 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
           activeMistakesCount: mistakes.filter((m) => m.status === "active").length,
           resolvedMistakesCount: mistakes.filter((m) => m.status === "resolved").length,
           dueReviewsCount: dueCards.length,
-          currentStreak: 1,
-          streakQualifiedToday: true,
+          currentStreak: hasSessionToday ? 1 : 0,
+          streakQualifiedToday: hasSessionToday,
         }),
       };
     }
