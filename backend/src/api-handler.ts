@@ -2,8 +2,20 @@
 // Strictly adheres to Blueprint Section 20, 21, 22, and 23
 
 import { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from "aws-lambda";
+import {
+  CognitoIdentityProviderClient,
+  AdminCreateUserCommand,
+  AdminSetUserPasswordCommand,
+  AdminInitiateAuthCommand,
+} from "@aws-sdk/client-cognito-identity-provider";
 import { DynamoDBStore } from "./dynamodb.js";
 import { FSRSEngine } from "../../src/core/fsrs.js";
+
+const REGION = process.env.AWS_REGION || "us-east-1";
+const USER_POOL_ID = process.env.USER_POOL_ID || "us-east-1_CwBwcSMGz";
+const USER_POOL_CLIENT_ID = process.env.USER_POOL_CLIENT_ID || "1u3s8e7bivjv2i0ejp79ntrph4";
+
+const cognitoClient = new CognitoIdentityProviderClient({ region: REGION });
 
 export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
   const method = event.requestContext.http.method;
@@ -27,6 +39,115 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
 
   try {
     const body = event.body ? JSON.parse(event.body) : {};
+
+    // 0. Authentication (Cognito Integration)
+    if (path === "/v1/auth/register" && method === "POST") {
+      const { username, email, password } = body;
+      if (!username || !password) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ code: "BAD_REQUEST", message: "Username and password are required" }),
+        };
+      }
+
+      try {
+        const createRes = await cognitoClient.send(
+          new AdminCreateUserCommand({
+            UserPoolId: USER_POOL_ID,
+            Username: username,
+            UserAttributes: [
+              { Name: "email", Value: email || `${username}@onpaper.local` },
+              { Name: "email_verified", Value: "true" },
+            ],
+            MessageAction: "SUPPRESS",
+          })
+        );
+
+        await cognitoClient.send(
+          new AdminSetUserPasswordCommand({
+            UserPoolId: USER_POOL_ID,
+            Username: username,
+            Password: password,
+            Permanent: true,
+          })
+        );
+
+        const authRes = await cognitoClient.send(
+          new AdminInitiateAuthCommand({
+            UserPoolId: USER_POOL_ID,
+            ClientId: USER_POOL_CLIENT_ID,
+            AuthFlow: "ADMIN_NO_SRP_AUTH",
+            AuthParameters: {
+              USERNAME: username,
+              PASSWORD: password,
+            },
+          })
+        );
+
+        const token = authRes.AuthenticationResult?.IdToken;
+        const sub = createRes.User?.Attributes?.find((a) => a.Name === "sub")?.Value || username;
+
+        return {
+          statusCode: 201,
+          headers,
+          body: JSON.stringify({
+            message: "Account created successfully",
+            token,
+            userId: sub,
+            username,
+          }),
+        };
+      } catch (err: any) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ code: "AUTH_ERROR", message: err.message || "Registration failed" }),
+        };
+      }
+    }
+
+    if (path === "/v1/auth/login" && method === "POST") {
+      const { username, password } = body;
+      if (!username || !password) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ code: "BAD_REQUEST", message: "Username and password are required" }),
+        };
+      }
+
+      try {
+        const authRes = await cognitoClient.send(
+          new AdminInitiateAuthCommand({
+            UserPoolId: USER_POOL_ID,
+            ClientId: USER_POOL_CLIENT_ID,
+            AuthFlow: "ADMIN_NO_SRP_AUTH",
+            AuthParameters: {
+              USERNAME: username,
+              PASSWORD: password,
+            },
+          })
+        );
+
+        const token = authRes.AuthenticationResult?.IdToken;
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            message: "Authentication successful",
+            token,
+            username,
+          }),
+        };
+      } catch (err: any) {
+        return {
+          statusCode: 401,
+          headers,
+          body: JSON.stringify({ code: "UNAUTHORIZED", message: err.message || "Invalid credentials" }),
+        };
+      }
+    }
 
     // 1. Account & Preferences
     if (path === "/v1/me" && method === "GET") {

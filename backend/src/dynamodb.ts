@@ -12,7 +12,7 @@ import {
   BatchWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 
-const rawClient = new DynamoDBClient({});
+const rawClient = new DynamoDBClient({ region: process.env.AWS_REGION || "ap-south-1" });
 export const ddb = DynamoDBDocumentClient.from(rawClient, {
   marshallOptions: { removeUndefinedValues: true },
 });

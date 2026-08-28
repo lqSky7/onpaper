@@ -50,7 +50,7 @@ test("Sync: Outbox batching, idempotency and delivery confirmation", async () =>
   assert.equal(pending[1].event.eventId, "sync-ev-2");
 
   // Push to live AWS backend API
-  const liveEndpoint = "https://t5q6ogypd4.execute-api.us-east-1.amazonaws.com";
+  const liveEndpoint = "https://xa9njv2kaf.execute-api.ap-south-1.amazonaws.com";
   const client = new SyncClient(db, liveEndpoint, "dev-mac-1");
 
   const pushResult = await client.pushOutbox();

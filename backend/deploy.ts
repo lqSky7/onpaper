@@ -11,6 +11,7 @@ import {
   CreateUserPoolCommand,
   CreateUserPoolClientCommand,
   ListUserPoolsCommand,
+  ListUserPoolClientsCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import {
   IAMClient,
@@ -45,7 +46,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 
-const REGION = process.env.AWS_REGION || "us-east-1";
+const REGION = process.env.AWS_REGION || "ap-south-1";
 const TABLE_NAME = "onpaper-data";
 const USER_POOL_NAME = "onpaper-users";
 const API_NAME = "onpaper-api-gateway";
@@ -120,6 +121,27 @@ async function main() {
   if (existingPool && existingPool.Id) {
     userPoolId = existingPool.Id;
     console.log(`Cognito User Pool exists: ${userPoolId}`);
+    const clientsRes = await cognitoClient.send(new ListUserPoolClientsCommand({ UserPoolId: userPoolId }));
+    const existingClient = clientsRes.UserPoolClients?.[0];
+    if (existingClient?.ClientId) {
+      userPoolClientId = existingClient.ClientId;
+      console.log(`Using existing Cognito Client: ${userPoolClientId}`);
+    } else {
+      const clientRes = await cognitoClient.send(
+        new CreateUserPoolClientCommand({
+          UserPoolId: userPoolId,
+          ClientName: "onpaper-app-client",
+          GenerateSecret: false,
+          ExplicitAuthFlows: [
+            "ALLOW_USER_PASSWORD_AUTH",
+            "ALLOW_USER_SRP_AUTH",
+            "ALLOW_REFRESH_TOKEN_AUTH",
+          ],
+        })
+      );
+      userPoolClientId = clientRes.UserPoolClient?.ClientId || "";
+      console.log(`Created Cognito Client: ${userPoolClientId}`);
+    }
   } else {
     const created = await cognitoClient.send(
       new CreateUserPoolCommand({
@@ -266,9 +288,10 @@ async function main() {
   // 5. Package and Deploy API Lambda (ARM64)
   console.log("[5/7] Bundling and packaging Lambda functions...");
   execSync("npm run build", { stdio: "inherit" });
+  execSync("npx esbuild backend/src/api-handler.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist-lambda/backend/src/api-handler.js", { stdio: "inherit" });
+  execSync("npx esbuild backend/src/reminder-handler.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist-lambda/backend/src/reminder-handler.js", { stdio: "inherit" });
 
-  const zipPath = path.resolve("./dist/lambda.zip");
-  execSync(`cd dist && zip -rq lambda.zip . && mv lambda.zip ..`, { stdio: "pipe" });
+  execSync(`cd dist-lambda && zip -rq ../lambda.zip . && cd ..`, { stdio: "pipe" });
   const zipBuffer = fs.readFileSync("./lambda.zip");
 
   const functionName = "onpaper-api";
@@ -282,6 +305,19 @@ async function main() {
         FunctionName: functionName,
         ZipFile: zipBuffer,
         Architectures: ["arm64"],
+      })
+    );
+    await lambdaClient.send(
+      new UpdateFunctionConfigurationCommand({
+        FunctionName: functionName,
+        Environment: {
+          Variables: {
+            TABLE_NAME,
+            USER_POOL_ID: userPoolId,
+            USER_POOL_CLIENT_ID: userPoolClientId,
+            AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1",
+          },
+        },
       })
     );
   } catch (err: any) {
@@ -300,6 +336,8 @@ async function main() {
           Environment: {
             Variables: {
               TABLE_NAME,
+              USER_POOL_ID: userPoolId,
+              USER_POOL_CLIENT_ID: userPoolClientId,
               AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1",
             },
           },
