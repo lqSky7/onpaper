@@ -247,7 +247,120 @@ export class DynamoDBStore {
       })
     );
 
+    // Materialize domain entities into DynamoDB
+    try {
+      const payload = event.payload || {};
+      const timestamp = event.localTimestamp || new Date().toISOString();
+
+      if (event.eventType === "project_initialized" || event.eventType === "project_updated") {
+        await this.saveProject(userId, {
+          projectId: event.projectId,
+          displayName: payload.displayName || "Project",
+          rootFingerprint: payload.rootFingerprint || "root",
+          primaryLanguages: payload.primaryLanguages || ["typescript"],
+          frameworks: payload.frameworks || [],
+          gitAvailable: true,
+          curriculumStatus: "active",
+          skillVersion: "1.0.0",
+          schemaVersion: 1,
+          createdAt: timestamp,
+          lastOpenedAt: timestamp,
+        });
+      } else if (event.eventType === "lesson_started" || event.eventType === "session_started") {
+        await this.saveSession(userId, {
+          sessionId: event.sessionId || crypto.randomUUID(),
+          projectId: event.projectId,
+          unitId: payload.unitId,
+          adapterType: "cli",
+          state: "teaching",
+          startedAt: timestamp,
+          durationSeconds: 0,
+          summary: payload.summary || "Interactive Lesson",
+          syncStatus: "synced",
+        });
+      } else if (event.eventType === "session_completed") {
+        await this.saveSession(userId, {
+          sessionId: event.sessionId || crypto.randomUUID(),
+          projectId: event.projectId,
+          unitId: payload.unitId,
+          adapterType: "cli",
+          state: "completed",
+          startedAt: payload.startedAt || timestamp,
+          endedAt: timestamp,
+          durationSeconds: payload.durationSeconds || 600,
+          summary: payload.summary || "Completed curriculum unit",
+          syncStatus: "synced",
+        });
+      } else if (event.eventType === "mistake_recorded" || event.eventType === "mistake_updated") {
+        await this.saveMistake(userId, {
+          mistakeId: payload.mistakeId || crypto.randomUUID(),
+          canonicalKey: payload.canonicalKey || "misconception",
+          title: payload.title || "Misconception",
+          category: payload.category || "concept",
+          conceptIds: payload.conceptIds || [],
+          severity: payload.severity || "medium",
+          status: payload.status || "active",
+          firstSeenAt: payload.firstSeenAt || timestamp,
+          lastSeenAt: timestamp,
+          occurrenceCount: payload.occurrenceCount || 1,
+          resolvedCount: payload.resolvedCount || 0,
+          exampleAttemptIds: payload.exampleAttemptIds || [],
+          fsrsCardIds: payload.fsrsCardIds || [],
+        });
+      } else if (event.eventType === "card_created" || event.eventType === "card_reviewed") {
+        await this.saveCard(userId, {
+          cardId: payload.cardId || crypto.randomUUID(),
+          conceptId: payload.conceptId || null,
+          mistakeId: payload.mistakeId || null,
+          questionFamilyId: payload.questionFamilyId || null,
+          state: payload.state || "New",
+          dueAt: payload.dueAt || timestamp,
+          lastReviewAt: payload.lastReviewAt || null,
+          stability: payload.stability || 0,
+          difficulty: payload.difficulty || 0,
+          reps: payload.reps || 0,
+          lapses: payload.lapses || 0,
+          scheduledDays: payload.scheduledDays || 0,
+          elapsedDays: payload.elapsedDays || 0,
+          algorithmVersion: "FSRS-4.5",
+          parameterVersion: "default-v1",
+          stateVersion: 1,
+        });
+      }
+    } catch (materializeErr) {
+      console.warn("Failed to materialize entity from sync event:", materializeErr);
+    }
+
     return true;
+  }
+
+  // Snapshot Sync Helper
+  public static async saveSnapshot(userId: string, snapshot: {
+    projects?: any[];
+    sessions?: any[];
+    mistakes?: any[];
+    cards?: any[];
+  }) {
+    if (snapshot.projects) {
+      for (const p of snapshot.projects) {
+        await this.saveProject(userId, p);
+      }
+    }
+    if (snapshot.sessions) {
+      for (const s of snapshot.sessions) {
+        await this.saveSession(userId, s);
+      }
+    }
+    if (snapshot.mistakes) {
+      for (const m of snapshot.mistakes) {
+        await this.saveMistake(userId, m);
+      }
+    }
+    if (snapshot.cards) {
+      for (const c of snapshot.cards) {
+        await this.saveCard(userId, c);
+      }
+    }
   }
 
   // Devices & Push Tokens

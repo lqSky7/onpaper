@@ -17,14 +17,44 @@ const USER_POOL_CLIENT_ID = process.env.USER_POOL_CLIENT_ID || "1u3s8e7bivjv2i0e
 
 const cognitoClient = new CognitoIdentityProviderClient({ region: REGION });
 
+function extractUser(event: APIGatewayProxyEventV2): { userId: string; email?: string; username?: string } {
+  const authHeader = event.headers?.authorization || event.headers?.Authorization;
+  if (authHeader && typeof authHeader === "string" && authHeader.toLowerCase().startsWith("bearer ")) {
+    const token = authHeader.substring(7).trim();
+    try {
+      const parts = token.split(".");
+      if (parts.length === 3) {
+        const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf-8"));
+        const sub = payload.sub;
+        const username = payload["cognito:username"] || payload.username;
+        const email = payload.email;
+        if (sub) {
+          return { userId: sub, email, username };
+        }
+        if (username) {
+          return { userId: username, email, username };
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to parse JWT bearer token:", e);
+    }
+  }
+
+  const claims = (event.requestContext as any)?.authorizer?.jwt?.claims;
+  if (claims?.sub) {
+    return { userId: claims.sub, email: claims.email, username: claims["cognito:username"] };
+  }
+
+  return { userId: "user-dev-default" };
+}
+
 export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGatewayProxyResultV2> => {
   const method = event.requestContext.http.method;
   const rawPath = event.rawPath || "/";
   const path = rawPath.replace(/\/$/, "");
 
-  // Extract Cognito User ID (sub claim)
-  const claims = (event.requestContext as any)?.authorizer?.jwt?.claims;
-  const userId = claims?.sub || "user-dev-default";
+  const userContext = extractUser(event);
+  const userId = userContext.userId;
 
   const headers = {
     "Content-Type": "application/json",
@@ -154,7 +184,7 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ userId, email: claims?.email || "user@onpaper.local", tier: "pro" }),
+        body: JSON.stringify({ userId, email: userContext.email || "user@onpaper.local", tier: "pro" }),
       };
     }
 
@@ -189,6 +219,10 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
         } else {
           duplicate.push(op.operationId);
         }
+      }
+
+      if (body.snapshot) {
+        await DynamoDBStore.saveSnapshot(userId, body.snapshot);
       }
 
       return {

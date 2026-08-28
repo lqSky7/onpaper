@@ -23,12 +23,17 @@ export class SyncClient {
 
   public async pushOutbox(): Promise<SyncPushResult | null> {
     const pending = this.db.getPendingOutbox();
-    if (pending.length === 0) {
+    const project = this.db.getProject();
+    const sessions = project ? this.db.getRecentSessions(project.projectId, 50) : [];
+    const mistakes = this.db.getMistakes();
+    const dueCards = this.db.getDueFSRSCards();
+
+    if (pending.length === 0 && !project && sessions.length === 0 && mistakes.length === 0 && dueCards.length === 0) {
       return null;
     }
 
     const batchId = crypto.randomUUID();
-    const pushPayload: SyncPushBatch = {
+    const pushPayload: any = {
       deviceId: this.deviceId,
       batchId,
       lastKnownServerRevision: 0,
@@ -37,6 +42,12 @@ export class SyncClient {
         event: p.event,
         payloadHash: p.payloadHash,
       })),
+      snapshot: {
+        projects: project ? [project] : [],
+        sessions: sessions || [],
+        mistakes: mistakes || [],
+        cards: dueCards || [],
+      },
     };
 
     const headers: Record<string, string> = {
