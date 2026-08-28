@@ -27,10 +27,12 @@ export class ExerciseManager {
       fs.mkdirSync(fullDir, { recursive: true });
     }
 
+    const customInstructions = db.getCustomInstructions();
     const { starterFiles, requirements, constraints } = this.scaffoldExerciseFiles(
       fullDir,
       unit,
-      primaryLanguage
+      primaryLanguage,
+      customInstructions
     );
 
     const starterFingerprint = this.computeDirectoryFingerprint(fullDir);
@@ -139,14 +141,24 @@ export class ExerciseManager {
   private static scaffoldExerciseFiles(
     dir: string,
     unit: LearningUnit,
-    language: string
+    language: string,
+    customInstructions?: string | null
   ): { starterFiles: string[]; requirements: string; constraints: string[] } {
+    let effectiveLanguage = language;
+    if (customInstructions && /javascript|no typescript|plain js|prefer js/i.test(customInstructions)) {
+      effectiveLanguage = "javascript";
+    }
+
     const requirements = `Implement a focused module that satisfies the target concepts: ${unit.conceptIds.join(", ")}. Follow standard software engineering patterns demonstrated in the project.`;
     const constraints = [
       "Use only previously taught syntax and concepts.",
       "Do not copy the production implementation directly.",
       "Ensure all edge cases and error paths are explicitly checked.",
     ];
+
+    if (customInstructions) {
+      constraints.push(`Custom instructions: ${customInstructions}`);
+    }
 
     const readmeContent = `# Coding Exercise: ${unit.title}
 
@@ -164,7 +176,7 @@ ${constraints.map((c) => `- ${c}`).join("\n")}
 
     fs.writeFileSync(path.join(dir, "README.md"), readmeContent, "utf-8");
 
-    if (language === "go") {
+    if (effectiveLanguage === "go") {
       fs.writeFileSync(
         path.join(dir, "exercise.go"),
         `package exercise\n\n// TODO: Implement requested logic\nfunc Solution(input string) (string, error) {\n\treturn input, nil\n}\n`,
@@ -175,7 +187,18 @@ ${constraints.map((c) => `- ${c}`).join("\n")}
         `package exercise\n\nimport "testing"\n\nfunc TestSolution(t *testing.T) {\n\tres, err := Solution("test")\n\tif err != nil || res != "test" {\n\t\tt.Errorf("unexpected result")\n\t}\n}\n`,
         "utf-8"
       );
-    } else if (language === "typescript" || language === "javascript") {
+    } else if (effectiveLanguage === "javascript") {
+      fs.writeFileSync(
+        path.join(dir, "exercise.js"),
+        `// TODO: Implement solution adhering to target concepts\nexport function solution(input) {\n  return input;\n}\n`,
+        "utf-8"
+      );
+      fs.writeFileSync(
+        path.join(dir, "exercise.test.js"),
+        `import { solution } from "./exercise.js";\n\nif (solution("test") !== "test") {\n  throw new Error("Test failed");\n}\n`,
+        "utf-8"
+      );
+    } else if (effectiveLanguage === "typescript") {
       fs.writeFileSync(
         path.join(dir, "exercise.ts"),
         `// TODO: Implement solution adhering to target concepts\nexport function solution(input: string): string {\n  return input;\n}\n`,
@@ -186,7 +209,7 @@ ${constraints.map((c) => `- ${c}`).join("\n")}
         `import { solution } from "./exercise.js";\n\nif (solution("test") !== "test") {\n  throw new Error("Test failed");\n}\n`,
         "utf-8"
       );
-    } else if (language === "python") {
+    } else if (effectiveLanguage === "python") {
       fs.writeFileSync(
         path.join(dir, "exercise.py"),
         `# TODO: Implement solution\ndef solution(val: str) -> str:\n    return val\n`,

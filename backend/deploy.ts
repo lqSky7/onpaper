@@ -58,6 +58,16 @@ const lambdaClient = new LambdaClient({ region: REGION });
 const apiGwClient = new ApiGatewayV2Client({ region: REGION });
 const s3Client = new S3Client({ region: REGION });
 
+async function waitForLambdaUpdate(functionName: string) {
+  for (let i = 0; i < 30; i++) {
+    const fn = await lambdaClient.send(new GetFunctionCommand({ FunctionName: functionName }));
+    const status = fn.Configuration?.LastUpdateStatus;
+    if (status === "Successful") return;
+    if (status === "Failed") throw new Error(`Lambda ${functionName} update failed: ${fn.Configuration?.LastUpdateStatusReason}`);
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+}
+
 async function main() {
   console.log(`=== Deploying OnPaper AWS Serverless Infrastructure (${REGION}) ===`);
 
@@ -250,40 +260,37 @@ async function main() {
         PolicyArn: "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
       })
     );
-
-    const ddbPolicy = JSON.stringify({
-      Version: "2012-10-17",
-      Statement: [
-        {
-          Effect: "Allow",
-          Action: [
-            "dynamodb:GetItem",
-            "dynamodb:PutItem",
-            "dynamodb:UpdateItem",
-            "dynamodb:DeleteItem",
-            "dynamodb:Query",
-            "dynamodb:Scan",
-            "dynamodb:BatchWriteItem",
-          ],
-          Resource: [
-            `arn:aws:dynamodb:${REGION}:${accountId}:table/${TABLE_NAME}`,
-            `arn:aws:dynamodb:${REGION}:${accountId}:table/${TABLE_NAME}/index/*`,
-          ],
-        },
-      ],
-    });
-
-    await iamClient.send(
-      new PutRolePolicyCommand({
-        RoleName: roleName,
-        PolicyName: "OnPaperDynamoDBPolicy",
-        PolicyDocument: ddbPolicy,
-      })
-    );
-
-    console.log(`Created IAM Role: ${roleArn}. Waiting 10s for propagation...`);
-    await new Promise((r) => setTimeout(r, 10000));
   }
+
+  const ddbPolicy = JSON.stringify({
+    Version: "2012-10-17",
+    Statement: [
+      {
+        Effect: "Allow",
+        Action: [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          "dynamodb:BatchWriteItem",
+        ],
+        Resource: [
+          `arn:aws:dynamodb:*:${accountId}:table/${TABLE_NAME}`,
+          `arn:aws:dynamodb:*:${accountId}:table/${TABLE_NAME}/index/*`,
+        ],
+      },
+    ],
+  });
+
+  await iamClient.send(
+    new PutRolePolicyCommand({
+      RoleName: roleName,
+      PolicyName: "OnPaperDynamoDBPolicy",
+      PolicyDocument: ddbPolicy,
+    })
+  );
 
   // 5. Package and Deploy API Lambda (ARM64)
   console.log("[5/7] Bundling and packaging Lambda functions...");
@@ -307,6 +314,7 @@ async function main() {
         Architectures: ["arm64"],
       })
     );
+    await waitForLambdaUpdate(functionName);
     await lambdaClient.send(
       new UpdateFunctionConfigurationCommand({
         FunctionName: functionName,
@@ -320,6 +328,7 @@ async function main() {
         },
       })
     );
+    await waitForLambdaUpdate(functionName);
   } catch (err: any) {
     if (err.name === "ResourceNotFoundException") {
       console.log(`Creating Lambda "${functionName}" (ARM64 Node.js 22)...`);

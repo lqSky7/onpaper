@@ -57,6 +57,7 @@ export interface Project {
   frameworks: string[];
   gitAvailable: boolean;
   curriculumStatus: CurriculumStatus;
+  customInstructions?: string;
   skillVersion: string;
   schemaVersion: number;
   createdAt: string;

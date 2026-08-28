@@ -57,6 +57,7 @@ export class ProjectDatabase {
         frameworks TEXT NOT NULL,
         git_available INTEGER NOT NULL,
         curriculum_status TEXT NOT NULL,
+        custom_instructions TEXT,
         skill_version TEXT NOT NULL,
         schema_version INTEGER NOT NULL,
         created_at TEXT NOT NULL,
@@ -353,6 +354,7 @@ export class ProjectDatabase {
       frameworks: JSON.parse(row.frameworks),
       gitAvailable: Boolean(row.git_available),
       curriculumStatus: row.curriculum_status,
+      customInstructions: row.custom_instructions || undefined,
       skillVersion: row.skill_version,
       schemaVersion: row.schema_version,
       createdAt: row.created_at,
@@ -364,12 +366,13 @@ export class ProjectDatabase {
     const stmt = this.db.prepare(`
       INSERT INTO projects (
         project_id, display_name, root_fingerprint, primary_languages,
-        frameworks, git_available, curriculum_status, skill_version,
+        frameworks, git_available, curriculum_status, custom_instructions, skill_version,
         schema_version, created_at, last_opened_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(project_id) DO UPDATE SET
         display_name = excluded.display_name,
         curriculum_status = excluded.curriculum_status,
+        custom_instructions = excluded.custom_instructions,
         last_opened_at = excluded.last_opened_at
     `);
     stmt.run(
@@ -380,11 +383,25 @@ export class ProjectDatabase {
       JSON.stringify(project.frameworks),
       project.gitAvailable ? 1 : 0,
       project.curriculumStatus,
+      project.customInstructions || null,
       project.skillVersion,
       project.schemaVersion,
       project.createdAt,
       project.lastOpenedAt
     );
+  }
+
+  public setCustomInstructions(instructions: string) {
+    const stmt = this.db.prepare(`
+      UPDATE projects
+      SET custom_instructions = ?, last_opened_at = ?
+    `);
+    stmt.run(instructions, new Date().toISOString());
+  }
+
+  public getCustomInstructions(): string | null {
+    const project = this.getProject();
+    return project?.customInstructions || null;
   }
 
   // Files
