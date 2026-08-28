@@ -6,6 +6,7 @@
 import { Command } from "commander";
 import * as path from "node:path";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as crypto from "node:crypto";
 import { ProjectDatabase, GlobalProfileDatabase } from "../core/database.js";
 import { PolicyGuard } from "../core/guards.js";
@@ -587,6 +588,39 @@ configCmd
       console.log(`[onpaper] Custom Instructions: ${inst}`);
     } else {
       console.log("[onpaper] No custom instructions set for this project.");
+    }
+  });
+
+// 13. clear command (local cleanup)
+program
+  .command("clear")
+  .description("Clean up all locally generated OnPaper files and databases on system (cloud untouched)")
+  .option("-g, --global", "Also clean up global profile state in ~/.onpaper")
+  .action((options) => {
+    const projectRoot = process.cwd();
+    const localDir = path.join(projectRoot, ".interview-prep");
+    let removedLocal = false;
+    let removedGlobal = false;
+
+    if (fs.existsSync(localDir)) {
+      fs.rmSync(localDir, { recursive: true, force: true });
+      removedLocal = true;
+      console.log(`[onpaper] Removed local directory: ${localDir}`);
+    }
+
+    if (options.global) {
+      const globalDir = path.join(os.homedir(), ".onpaper");
+      if (fs.existsSync(globalDir)) {
+        fs.rmSync(globalDir, { recursive: true, force: true });
+        removedGlobal = true;
+        console.log(`[onpaper] Removed global profile directory: ${globalDir}`);
+      }
+    }
+
+    if (!removedLocal && !removedGlobal) {
+      console.log("[onpaper] No local OnPaper files found to clean.");
+    } else {
+      console.log("[onpaper] Local cleanup complete. Cloud data and remote progress remain untouched.");
     }
   });
 

@@ -37,6 +37,10 @@ test("Database: CRUD, sessions, events and outbox", () => {
   assert.equal(loaded?.projectId, "proj-123");
   assert.equal(loaded?.displayName, "Test Project");
 
+  // Custom instructions
+  db.setCustomInstructions("Prefer javascript for exercises");
+  assert.equal(db.getCustomInstructions(), "Prefer javascript for exercises");
+
   // Record Event & Outbox
   const event = {
     eventId: "event-1",
