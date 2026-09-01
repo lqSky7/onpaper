@@ -1,5 +1,8 @@
 # OnPaper
 
+> **Website:** [https://onpaper.pages.dev](https://onpaper.pages.dev)  
+> **Repository:** [https://github.com/lqSky7/onpaper](https://github.com/lqSky7/onpaper)
+
 Project-Based Technical Interview Readiness Platform.
 
 OnPaper turns any existing software project into a structured, stateful interview-preparation curriculum. Designed for agentic IDEs, local offline-first execution, serverless cloud synchronization with zero idle cost, and companion review on iOS.
